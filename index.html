@@ -10,10 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <title>모두의공영주차장</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=ce2d31bc42a439125376f249d800b8db&autoload=false&libraries=clusterer"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR",sans-serif; overflow:hidden; }
@@ -32,14 +29,18 @@
   .geo-banner button { float:right; border:none; background:none; color:#92400e; font-weight:800; cursor:pointer; font-size:12px; }
   .err-banner { position:absolute; top:60px; left:12px; right:12px; z-index:1000; max-width:480px; margin:0 auto; background:#fee2e2; color:#991b1b; border-radius:10px; padding:10px 14px; font-size:12px; font-weight:600; box-shadow:0 2px 8px rgba(0,0,0,.12); display:none; line-height:1.5; }
 
-  .status { position:absolute; bottom:calc(128px + env(safe-area-inset-bottom)); left:12px; z-index:999; background:rgba(255,255,255,.94); border-radius:8px; padding:6px 10px; font-size:10px; color:#6b7280; max-width:260px; line-height:1.5; box-shadow:0 1px 4px rgba(0,0,0,.1); }
+  .status { position:absolute; bottom:calc(128px + env(safe-area-inset-bottom)); left:12px; z-index:999; background:rgba(255,255,255,.96); border-radius:20px; padding:7px 12px; font-size:11px; font-weight:700; color:#374151; max-width:260px; line-height:1.5; box-shadow:0 1px 4px rgba(0,0,0,.12); cursor:pointer; user-select:none; }
+  .status .s-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:#10b981; margin-right:5px; }
+  .status.stale .s-dot { background:#f59e0b; }
+  .status .s-detail { font-weight:500; font-size:10px; color:#6b7280; margin-top:4px; }
   .locate { position:absolute; bottom:calc(128px + env(safe-area-inset-bottom)); right:12px; z-index:999; width:44px; height:44px; border-radius:50%; background:#fff; border:none; box-shadow:0 2px 10px rgba(0,0,0,.18); cursor:pointer; font-size:18px; }
 
   /* 바텀시트 */
   .sheet { position:absolute; left:0; right:0; bottom:0; z-index:1001; background:#fff; border-radius:20px 20px 0 0; box-shadow:0 -4px 24px rgba(0,0,0,.18); max-width:520px; margin:0 auto; transform:translateY(calc(100% - 116px - env(safe-area-inset-bottom))); display:flex; flex-direction:column; height:72vh; touch-action:none; padding-bottom:env(safe-area-inset-bottom); }
   @media (min-width: 768px){ /* PC: 좌측 고정 패널 + 지도. 모바일처럼 보이지 않게 */
     .sheet { left:12px; right:auto; width:400px; margin:0; top:68px; bottom:12px; height:auto;
-      border-radius:16px; transform:none !important; touch-action:auto; }
+      border-radius:16px; transform:none !important; touch-action:auto; transition:transform .25s ease, opacity .2s ease; }
+    .sheet.hidden { transform:translateX(calc(-100% - 24px)) !important; opacity:0; pointer-events:none; }
     .sheet-handle { cursor:default; }
     .sheet-handle .bar { display:none; }
     .mini { left:428px; right:auto; width:380px; bottom:16px; margin:0; }
@@ -60,6 +61,8 @@
   .searchbox input { border:none; outline:none; flex:1; font-size:16px; background:transparent; } /* 16px: iOS 포커스 확대 방지 */
   .searchbox .clear { border:none; background:none; color:#9ca3af; font-size:13px; cursor:pointer; display:none; }
   .count-pill { font-size:12px; font-weight:700; color:#2563eb; white-space:nowrap; }
+  .sheet-collapse { flex:none; width:34px; height:34px; border:none; border-radius:8px; background:#f3f4f6; color:#6b7280; font-size:14px; cursor:pointer; }
+  #panelOpen { display:none; position:absolute; top:68px; left:12px; z-index:1000; padding:11px 16px; border:none; border-radius:12px; background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.16); font-size:13px; font-weight:700; color:#374151; cursor:pointer; }
   .chips { display:flex; gap:6px; overflow-x:auto; padding:8px 0 2px; scrollbar-width:none; }
   .chips::-webkit-scrollbar { display:none; }
   .chip { flex:none; background:#fff; border:1px solid #e5e7eb; border-radius:20px; padding:6px 12px; font-size:12px; font-weight:600; color:#374151; cursor:pointer; }
@@ -117,7 +120,12 @@
   .info-cell { border:1px solid #f0f0f2; border-radius:12px; padding:12px; }
   .info-cell .k { font-size:11px; color:#9ca3af; font-weight:600; }
   .info-cell .v { font-size:14px; font-weight:700; color:#111827; margin-top:4px; }
-  .warn { margin-top:12px; border-radius:12px; padding:12px 14px; font-size:12px; line-height:1.5; background:#fdf4ff; color:#86198f; }
+  .warn { margin-top:14px; border-radius:12px; padding:12px 14px; font-size:12px; line-height:1.5; background:#fdf4ff; color:#86198f; }
+  .warn .w-rows { margin-top:8px; padding-top:8px; border-top:1px dashed #e9d5ff; display:grid; gap:4px; }
+  .warn .w-rows b { color:#a21caf; margin-right:6px; font-weight:700; }
+  .sec-title { margin:16px 2px 6px; font-size:12px; font-weight:800; color:#9ca3af; letter-spacing:.02em; }
+  .fee-table { margin-top:0; }
+  .info-grid { margin-top:0; }
 
   /* 마커·클러스터 */
   .pmarker { display:flex; flex-direction:column; align-items:center; filter:drop-shadow(0 2px 3px rgba(0,0,0,.3)); }
@@ -126,7 +134,6 @@
   .pmarker.sel .pin { outline:2.5px solid #111827; }
   .cluster { background:#2563eb; color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; border:3px solid rgba(255,255,255,.85); box-shadow:0 2px 6px rgba(0,0,0,.25); }
   .me-dot { width:18px; height:18px; border-radius:50%; background:#2563eb; border:3px solid #fff; box-shadow:0 0 0 6px rgba(37,99,235,.2); }
-  .leaflet-control-attribution { font-size:9px; }
 </style>
 </head>
 <body>
@@ -150,6 +157,7 @@
 <button class="locate" id="locateBtn" title="현위치로">📍</button>
 
 <div class="mini" id="mini"></div>
+<button id="panelOpen">☰ 목록 보기</button>
 
 <div class="sheet anim" id="sheet">
   <div class="sheet-handle" id="sheetHandle">
@@ -161,6 +169,7 @@
         <button class="clear" id="qClear">✕</button>
       </div>
       <span class="count-pill" id="cnt">0곳</span>
+      <button class="sheet-collapse" id="sheetCollapse" title="지도 보기">▾</button>
     </div>
     <div class="chips">
       <button class="chip active" data-f="all">전체</button>
@@ -184,7 +193,7 @@
 // ═══ 설정 ═══
 const POLL_MS = 5 * 60 * 1000;
 const DEFAULT_CENTER = [37.5663, 126.9779];
-const STATIC_MIN_ZOOM = 11;   // 이 줌 미만에서는 실시간 주차장만 표시 (줌 전략)
+const STATIC_MAX_LEVEL = 8;   // 카카오맵 레벨이 이 값 초과(더 축소)면 실시간 주차장만 표시
 const LIST_MAX = 80;
 
 // ═══ 상태 ═══
@@ -196,28 +205,28 @@ let nextPollAt = 0, pollTimer = null;
 let favs = new Set(JSON.parse(localStorage.getItem("modu-favs") || "[]"));
 let meMarker = null;
 
-// ═══ 지도 ═══
-const map = L.map("map", { zoomControl:false }).setView(DEFAULT_CENTER, 13);
-// Voyager 타일: light_all보다 색감 풍부 (도로·공원·수역 컬러)
-L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom:19, attribution:"© OpenStreetMap © CARTO" }).addTo(map);
-L.control.zoom({ position:"bottomright" }).addTo(map);
-
-// 클러스터 (CDN 로드 실패 시 일반 레이어로 폴백)
-const cluster = (typeof L.markerClusterGroup === "function")
-  ? L.markerClusterGroup({
-      maxClusterRadius: 52,
-      showCoverageOnHover: false,
-      spiderfyOnMaxZoom: true,
-      disableClusteringAtZoom: 16,
-      iconCreateFunction: c => {
-        const n = c.getChildCount();
-        const size = n < 10 ? 34 : n < 100 ? 40 : 48;
-        return L.divIcon({ html:`<div class="cluster" style="width:${size}px;height:${size}px">${n}</div>`, className:"", iconSize:[size,size] });
-      }
-    })
-  : L.layerGroup();
-if(!cluster.addLayers) cluster.addLayers = ms => ms.forEach(m => cluster.addLayer(m));
-map.addLayer(cluster);
+// ═══ 지도 (카카오맵) ═══
+let map = null, cluster = null, meOverlay = null;
+const CLUSTER_STYLE = { background:"#2563eb", borderRadius:"50%", color:"#fff", textAlign:"center",
+  fontWeight:"800", border:"3px solid rgba(255,255,255,.85)", boxShadow:"0 2px 6px rgba(0,0,0,.25)" };
+function initMap(){
+  map = new kakao.maps.Map(document.getElementById("map"), {
+    center: new kakao.maps.LatLng(DEFAULT_CENTER[0], DEFAULT_CENTER[1]), level: 8
+  });
+  map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.BOTTOMRIGHT);
+  cluster = new kakao.maps.MarkerClusterer({
+    map, averageCenter: true, minLevel: 3, gridSize: 70, disableClickZoom: false,
+    calculator: [10, 100],
+    styles: [
+      {...CLUSTER_STYLE, width:"34px", height:"34px", lineHeight:"34px", fontSize:"12px"},
+      {...CLUSTER_STYLE, width:"42px", height:"42px", lineHeight:"42px", fontSize:"13px"},
+      {...CLUSTER_STYLE, width:"50px", height:"50px", lineHeight:"50px", fontSize:"13px", background:"#1e40af"}
+    ]
+  });
+  kakao.maps.event.addListener(map, "idle", debounce(()=>{ renderMap(); renderList(); }, 250));
+  kakao.maps.event.addListener(map, "click", ()=>{ closeDetail(); closeMini(); if(!isDesktop()) $("sheet").classList.remove("open"); });
+  kakao.maps.event.addListener(map, "dragstart", ()=>closeMini());
+}
 
 // ═══ 유틸 ═══
 const fmt = n => n.toLocaleString("ko-KR");
@@ -258,17 +267,18 @@ function baseLots(){
     return true;
   });
 }
-function mapLots(){ // 줌 전략: 낮은 줌에선 실시간만
-  const z = map.getZoom();
-  return baseLots().filter(l => l.lat && (l.live || z >= STATIC_MIN_ZOOM));
+function mapLots(){ // 줌 전략: 축소 상태에선 실시간만
+  const lv = map ? map.getLevel() : 8;
+  return baseLots().filter(l => l.lat && (l.live || lv <= STATIC_MAX_LEVEL));
 }
 function listLots(){ // 뷰포트 기준 (검색 중엔 전체에서)
   let arr = baseLots();
-  if(!query){
-    const b = map.getBounds().pad(0.15);
-    arr = arr.filter(l => !l.lat || b.contains([l.lat, l.lng]));
+  if(!query && map){
+    const b = map.getBounds();
+    arr = arr.filter(l => !l.lat || b.contain(new kakao.maps.LatLng(l.lat, l.lng)));
   }
-  const ref = myPos || [map.getCenter().lat, map.getCenter().lng];
+  const c = map ? map.getCenter() : null;
+  const ref = myPos || (c ? [c.getLat(), c.getLng()] : DEFAULT_CENTER);
   return arr.slice().sort((a,b)=>{
     const da = a.lat ? distKm(ref,[a.lat,a.lng]) : 1e9;
     const db = b.lat ? distKm(ref,[b.lat,b.lng]) : 1e9;
@@ -276,21 +286,24 @@ function listLots(){ // 뷰포트 기준 (검색 중엔 전체에서)
   });
 }
 
-// ═══ 마커 ═══
-function makeIcon(l){
+// ═══ 마커 (카카오 CustomOverlay) ═══
+function makeOverlay(l){
   const st = availState(l), c = COLORS[st];
   const label = st==="na" ? "P" : (st==="full" ? "만차" : l.cur);
-  return L.divIcon({ className:"", iconSize:[40,36], iconAnchor:[20,34],
-    html:`<div class="pmarker ${l.id===selectedId?"sel":""}"><div class="pin" style="background:${c}">${label}</div><div class="tip" style="border-top-color:${c}"></div></div>` });
+  const el = document.createElement("div");
+  el.className = "pmarker" + (l.id===selectedId ? " sel" : "");
+  el.style.cursor = "pointer";
+  el.innerHTML = `<div class="pin" style="background:${c}">${label}</div><div class="tip" style="border-top-color:${c}"></div>`;
+  el.addEventListener("click", e=>{ e.stopPropagation(); openMini(l.id); });
+  return new kakao.maps.CustomOverlay({
+    position: new kakao.maps.LatLng(l.lat, l.lng), content: el,
+    yAnchor: 1, zIndex: l.id===selectedId ? 10 : 1
+  });
 }
 function renderMap(){
-  cluster.clearLayers();
-  const ms = mapLots().map(l=>{
-    const m = L.marker([l.lat,l.lng], { icon:makeIcon(l) });
-    m.on("click", ()=>openMini(l.id));
-    return m;
-  });
-  cluster.addLayers(ms);
+  if(!cluster) return;
+  cluster.clear();
+  cluster.addMarkers(mapLots().map(makeOverlay));
 }
 
 // ═══ 리스트 ═══
@@ -326,15 +339,21 @@ function renderList(){
     (data.length > LIST_MAX ? `<div class="area-note">…외 ${fmt(data.length-LIST_MAX)}곳 (지도를 확대해보세요)</div>` : "") ||
     `<div style="text-align:center;color:#9ca3af;padding:40px 0;font-size:14px">표시할 주차장이 없습니다</div>`;
 }
+let statusOpen = false;
 function renderStatus(){
+  const el = $("status");
+  if(!meta.updated){ el.innerHTML = `<span class="s-dot" style="background:#9ca3af"></span>불러오는 중…`; return; }
+  const age = Math.floor((Date.now() - new Date(meta.updated.replace(" ","T")).getTime())/60000);
+  el.classList.toggle("stale", age >= 7);
+  const head = `<span class="s-dot"></span>실시간 · ${isNaN(age)||age<1 ? "방금 전" : age+"분 전"}`;
+  if(!statusOpen){ el.innerHTML = head; return; }
   const naCnt = LOTS.filter(l=>!l.live).length;
   const remain = Math.max(0, nextPollAt - Date.now());
   const mm = String(Math.floor(remain/60000)), ss = String(Math.floor(remain%60000/1000)).padStart(2,"0");
-  $("status").innerHTML = !meta.updated
-    ? "⏳ 실제 데이터 불러오는 중… (서울시 API 호출)"
-    : `데이터: ${meta.source||"-"}<br>실시간 ${meta.counts?.live??0}곳 · 정적 ${meta.counts?.static??0}곳 · 갱신 ${meta.updated}` +
-      (meta.datagoPending ? `<br>⏳ 전국표준데이터 수집 중… (자동 반영)` : ``) +
-      `<br>실시간 미제공 ${naCnt}곳 ${liveOnly?"숨김":"표시"} · 다음 갱신 ${mm}:${ss}`;
+  el.innerHTML = head + `<div class="s-detail">
+    데이터: ${meta.source||"-"}<br>
+    실시간 ${meta.counts?.live??0}곳 · 정적 ${meta.counts?.static??0}곳<br>
+    실시간 미제공 ${naCnt}곳 ${liveOnly?"숨김":"표시"} · 다음 갱신 ${mm}:${ss}</div>`;
 }
 function render(){ renderMap(); renderList(); renderStatus(); }
 
@@ -374,30 +393,50 @@ function openDetail(id){
         <span class="t">실시간 현황 미제공 주차장</span>
         <div style="font-size:11px;color:#9ca3af;margin-top:6px">총 ${fmt(l.total)}면 · 자치구 운영/노상주차장은 실시간 데이터가 아직 공개되지 않습니다.</div>
       </div>`;
+  const stBadge = st==="na"
+    ? `<span class="badge b-nolive">실시간 없음</span>`
+    : `<span class="badge" style="background:${COLORS[st]}18;color:${COLORS[st]}">${st==="full"?"만차":st==="mid"?"임박 · "+fmt(l.cur)+"면":"여유 · "+fmt(l.cur)+"면"}</span>`;
+  const tel = (l.tel && l.tel!=="*" && l.tel!=="-") ? l.tel : "정보 없음";
+  const ri = l.residentInfo || {};
+  const riRows = [
+    ri.name ? `<div><b>구역</b>${ri.name}</div>` : "",
+    ri.time ? `<div><b>운영</b>${ri.time}</div>` : "",
+    ri.fee ? `<div><b>배정요금</b>${ri.fee}</div>` : "",
+    ri.discount ? `<div><b>할인</b>${ri.discount}</div>` : ""
+  ].filter(Boolean).join("");
   $("detailBody").innerHTML = `
     <h2>${l.name}</h2>
     <div class="addr">${distText(l)?distText(l)+" · ":""}${l.addr||""}</div>
     <div class="badges" style="margin-top:10px">
+      ${stBadge}
       <span class="badge b-type">${l.type}</span>
       ${l.resident?'<span class="badge b-resident">거주자우선 구역</span>':''}
-      ${!l.live?'<span class="badge b-nolive">실시간 없음</span>':''}
     </div>
     ${liveBox}
+    <div class="sec-title">요금</div>
     <div class="fee-table">
-      <div class="row"><span class="k">기본요금 (최초 ${l.basic[0]}분)</span><span class="v">${l.basic[1]?fmt(l.basic[1])+"원":"-"}</span></div>
-      <div class="row"><span class="k">추가요금 (${l.add[0]}분당)</span><span class="v">${l.add[1]?fmt(l.add[1])+"원":"-"}</span></div>
-      <div class="row"><span class="k">일 최대 요금</span><span class="v">${l.dayMax?fmt(l.dayMax)+"원":"제한 없음"}</span></div>
+      <div class="row"><span class="k">기본요금 · 최초 ${l.basic[0]||"-"}분</span><span class="v">${l.basic[1]?fmt(l.basic[1])+"원":"무료 또는 정보 없음"}</span></div>
+      ${l.add[1]?`<div class="row"><span class="k">추가요금 · ${l.add[0]}분당</span><span class="v">${fmt(l.add[1])}원</span></div>`:""}
+      <div class="row"><span class="k">일 최대</span><span class="v">${l.dayMax?fmt(l.dayMax)+"원":"제한 없음"}</span></div>
     </div>
+    <div class="sec-title">운영 정보</div>
     <div class="info-grid">
-      <div class="info-cell"><div class="k">운영 시간</div><div class="v">${l.hours}</div></div>
-      <div class="info-cell"><div class="k">전화</div><div class="v">${l.tel}</div></div>
+      <div class="info-cell"><div class="k">운영 시간</div><div class="v">${l.hours||"-"}</div></div>
+      <div class="info-cell"><div class="k">전화</div><div class="v">${tel}</div></div>
     </div>
-    ${l.resident?`<div class="warn">🏠 거주자우선주차 구획이 포함된 구역입니다. 배정 시간대에는 일반 차량 주차가 제한될 수 있습니다.</div>`:""}`;
+    ${l.resident?`<div class="warn">
+      <b>🏠 거주자우선주차 구역</b>
+      <div style="margin-top:4px">배정 시간대에는 일반 차량 주차가 제한될 수 있습니다.</div>
+      ${riRows?`<div class="w-rows">${riRows}</div>`:""}
+    </div>`:""}`;
   $("favDetail").classList.toggle("on", favs.has(String(l.id)));
   $("favDetail").onclick = e => toggleFav(e, l.id);
   $("detail").classList.add("open");
-  $("sheet").classList.remove("open");
-  if(l.lat) map.flyTo([l.lat, l.lng], Math.max(map.getZoom(),15), {duration:.5});
+  if(!isDesktop()) $("sheet").classList.remove("open");
+  if(l.lat && map){
+    map.setLevel(Math.min(map.getLevel(), 4));
+    map.panTo(new kakao.maps.LatLng(l.lat, l.lng));
+  }
   renderMap();
 }
 function closeDetail(){
@@ -423,9 +462,14 @@ function requestGeo(){
   navigator.geolocation.getCurrentPosition(pos=>{
     myPos = [pos.coords.latitude, pos.coords.longitude];
     $("geoBanner").style.display = "none";
-    if(meMarker) map.removeLayer(meMarker);
-    meMarker = L.marker(myPos, { icon:L.divIcon({className:"", html:'<div class="me-dot"></div>', iconSize:[18,18], iconAnchor:[9,9]}), zIndexOffset:1000 }).addTo(map);
-    map.setView(myPos, 15);
+    if(meOverlay) meOverlay.setMap(null);
+    const el = document.createElement("div"); el.className = "me-dot";
+    meOverlay = new kakao.maps.CustomOverlay({
+      position: new kakao.maps.LatLng(myPos[0], myPos[1]), content: el, yAnchor: .5, zIndex: 100
+    });
+    meOverlay.setMap(map);
+    map.setLevel(4);
+    map.setCenter(new kakao.maps.LatLng(myPos[0], myPos[1]));
     render();
   }, ()=>showGeoBanner(), { enableHighAccuracy:true, timeout:8000 });
 }
@@ -482,7 +526,7 @@ const isDesktop = () => matchMedia("(min-width:768px)").matches;
     if(startOpen) sheet.classList.toggle("open", dy < 60);
     else sheet.classList.toggle("open", dy < -60);
   }
-  handle.addEventListener("touchstart", e=>onStart(e.touches[0].clientY), {passive:true});
+  handle.addEventListener("touchstart", e=>{ if(e.target.closest("input,button")) return; onStart(e.touches[0].clientY); }, {passive:true});
   handle.addEventListener("touchmove", e=>onMove(e.touches[0].clientY), {passive:true});
   handle.addEventListener("touchend", e=>onEnd(e.changedTouches[0].clientY));
   handle.addEventListener("mousedown", e=>{ if(e.target.closest("input,button")) return; onStart(e.clientY);
@@ -512,17 +556,33 @@ $("liveToggle").addEventListener("click", function(){
 });
 $("refreshBtn").addEventListener("click", ()=>loadData(true));
 $("locateBtn").addEventListener("click", requestGeo);
-map.on("click", ()=>{ closeDetail(); closeMini(); if(!isDesktop()) $("sheet").classList.remove("open"); });
-map.on("movestart", ()=>closeMini()); // 지도를 끌면 미니카드 닫기
+$("status").addEventListener("click", ()=>{ statusOpen = !statusOpen; renderStatus(); });
+$("sheetCollapse").addEventListener("click", ()=>{
+  $("q").blur();
+  if(isDesktop()){ $("sheet").classList.add("hidden"); $("panelOpen").style.display = "block"; }
+  else $("sheet").classList.remove("open");
+});
+$("panelOpen").addEventListener("click", ()=>{
+  $("sheet").classList.remove("hidden");
+  $("panelOpen").style.display = "none";
+});
 document.addEventListener("keydown", e=>{ if(e.key==="Escape"){ closeDetail(); closeMini(); } });
 if(isDesktop()) $("sheet").classList.add("open");
-map.on("moveend zoomend", debounce(()=>{ renderMap(); renderList(); }, 250));
 setInterval(renderStatus, 1000);
 
-// ═══ 시작 ═══
-render();
-requestGeo();
-loadData();
+// ═══ 시작 (카카오맵 SDK 로드 후) ═══
+function startApp(){
+  initMap();
+  render();
+  requestGeo();
+  loadData();
+}
+if(window.kakao && kakao.maps){
+  kakao.maps.load(startApp);
+} else {
+  $("errBanner").innerHTML = "⚠️ 카카오맵 SDK 로드 실패 — developers.kakao.com에서 JavaScript SDK 도메인 등록(https://modu-public-parking.vercel.app, http://localhost:8765)을 확인해주세요.";
+  $("errBanner").style.display = "block";
+}
 </script>
 </body>
 </html>

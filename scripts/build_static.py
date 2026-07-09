@@ -14,6 +14,99 @@ sys.path.insert(0, str(BASE))
 import server  # fetch_rows / fetch_datago_rows / norm / hours_text 재사용
 
 OUT = BASE / "data" / "static-lots.json"
+RES_API = "https://api.data.go.kr/openapi/tn_pubr_public_residnt_prior_parkng_api"
+RES_RADIUS_KM = 0.12  # 주차장 반경 120m 내 거주자우선 구획이 있으면 배지
+
+
+def pick(it, *subs):
+    """필드명 변형에 대비한 키 탐색 (부분일치, 값 있는 것만)"""
+    for k, v in it.items():
+        kl = k.lower()
+        if any(s in kl for s in subs) and v and str(v).strip():
+            return str(v).strip()
+    return ""
+
+
+def fetch_resident_zones(max_pages=200, per=1000):
+    """전국거주자우선주차정보표준데이터 → 수도권 구획 목록"""
+    import urllib.request
+    zones, shown_keys = [], False
+    for p in range(1, max_pages + 1):
+        url = f"{RES_API}?serviceKey={server.DATAGO_KEY}&pageNo={p}&numOfRows={per}&type=json"
+        j = None
+        for attempt in (1, 2):
+            try:
+                with urllib.request.urlopen(url, timeout=60) as r:
+                    j = json.loads(r.read().decode("utf-8"))
+                break
+            except Exception as e:
+                print(f"[warn] 거주자우선 p{p} (시도{attempt}): {e}")
+        if j is None:
+            break
+        header = (j.get("response") or {}).get("header") or {}
+        if header.get("resultCode") != "00":
+            print(f"[info] 거주자우선 API: {header.get('resultMsg')}")
+            break
+        items = ((j.get("response") or {}).get("body") or {}).get("items") or []
+        if not items:
+            break
+        if not shown_keys:
+            print(f"  (필드: {list(items[0].keys())[:12]}…)")
+            shown_keys = True
+        for it in items:
+            addr = it.get("rdnmadr") or it.get("lnmadr") or ""
+            if not addr.startswith(("서울", "경기", "인천")):
+                continue
+            try:
+                lat, lng = float(it.get("latitude") or 0), float(it.get("longitude") or 0)
+            except ValueError:
+                continue
+            if not lat or not lng:
+                continue
+            name = next((str(v) for k, v in it.items()
+                         if k.endswith("Nm") and "instt" not in k.lower() and v), "")
+            zones.append({
+                "lat": lat, "lng": lng, "name": name,
+                "time": pick(it, "time"),
+                "fee": pick(it, "fare", "fee", "chrge"),
+                "discount": pick(it, "dscnt", "discount"),
+            })
+        print(f"[info] 거주자우선 p{p} 수신 (누적 수도권 {len(zones)}구획)")
+        if len(items) < per:
+            break
+    return zones
+
+
+def mark_resident(lots, zones):
+    """그리드 해싱으로 반경 내 구획 매칭 (수만 구획 × 수천 주차장 고속 처리)"""
+    import math
+    grid = {}
+    for z in zones:
+        grid.setdefault((int(z["lat"] * 100), int(z["lng"] * 100)), []).append(z)
+
+    def dist_km(a, b, c, d):
+        R, dla, dlo = 6371, math.radians(c - a), math.radians(d - b)
+        x = math.sin(dla / 2) ** 2 + math.cos(math.radians(a)) * math.cos(math.radians(c)) * math.sin(dlo / 2) ** 2
+        return R * 2 * math.atan2(math.sqrt(x), math.sqrt(1 - x))
+
+    marked = 0
+    for l in lots:
+        if not l["lat"]:
+            continue
+        gy, gx = int(l["lat"] * 100), int(l["lng"] * 100)
+        best = None
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                for z in grid.get((gy + dy, gx + dx), []):
+                    d = dist_km(l["lat"], l["lng"], z["lat"], z["lng"])
+                    if d <= RES_RADIUS_KM and (best is None or d < best[0]):
+                        best = (d, z)
+        if best:
+            l["resident"] = True
+            z = best[1]
+            l["residentInfo"] = {k: z[k] for k in ("name", "time", "fee", "discount") if z.get(k)}
+            marked += 1
+    return marked
 
 
 def main():
@@ -46,6 +139,11 @@ def main():
             "tel": r.get("TELNO") or "-",
             "resident": False,
         })
+
+    print("● 거주자우선주차 구획(수도권) 수집…")
+    zones = fetch_resident_zones()
+    marked = mark_resident(lots, zones) if zones else 0
+    print(f"  → 구획 {len(zones)}개, 거주자우선 표시 주차장 {marked}곳")
 
     OUT.parent.mkdir(exist_ok=True)
     payload = {

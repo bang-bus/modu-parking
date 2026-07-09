@@ -80,7 +80,8 @@ def build():
             "basic": [int(float(r.get("BSC_PRK_HR") or 0)), int(float(r.get("BSC_PRK_CRG") or 0))],
             "add": [int(float(r.get("ADD_PRK_HR") or 0)), int(float(r.get("ADD_PRK_CRG") or 0))],
             "dayMax": int(float(r.get("DAY_MAX_CRG") or 0)),
-            "total": total, "cur": max(0, total - occ), "live": True, "resident": False,
+            "total": total, "cur": max(0, total - occ), "live": True,
+            "resident": bool(s.get("resident")), "residentInfo": s.get("residentInfo"),
             "hours": hours_text(r.get("WD_OPER_BGNG_TM"), r.get("WD_OPER_END_TM")),
             "tel": r.get("TELNO") or "-", "updatedAt": r.get("NOW_PRK_VHCL_UPDT_TM"),
         })

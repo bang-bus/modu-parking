@@ -209,6 +209,17 @@ def build_payload():
             "updatedAt": None,
         })
 
+    # 거주자우선 표시: build_static.py가 생성한 스냅샷의 매칭 결과 재사용 (로컬 개발용)
+    try:
+        sj = json.loads((BASE / "data" / "static-lots.json").read_text(encoding="utf-8"))
+        rmap = {norm(l["name"]): l.get("residentInfo") for l in sj.get("lots", []) if l.get("resident")}
+        for l in lots:
+            info = rmap.get(norm(l["name"]))
+            if info is not None or norm(l["name"]) in rmap:
+                l["resident"], l["residentInfo"] = True, info
+    except Exception:
+        pass
+
     src = "서울 열린데이터광장" + (" [sample 키: 5건 제한 — README 참고]" if KEY == "sample" else "")
     if datago_rows:
         src += f" + 전국주차장표준데이터({len(datago_rows)}곳)"
