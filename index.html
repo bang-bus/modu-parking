@@ -136,7 +136,7 @@
   <div class="brand"><span class="p">P</span> 모두의공영주차장</div>
   <div class="top-right">
     <button class="iconbtn" id="refreshBtn" title="지금 갱신">↻</button>
-    <button class="toggle" id="naToggle"><span class="dot"></span>실시간 없는 곳</button>
+    <button class="toggle" id="liveToggle"><span class="dot"></span>실시간만 보기</button>
   </div>
 </div>
 
@@ -184,12 +184,12 @@
 // ═══ 설정 ═══
 const POLL_MS = 5 * 60 * 1000;
 const DEFAULT_CENTER = [37.5663, 126.9779];
-const STATIC_MIN_ZOOM = 13;   // 이 줌 미만에서는 실시간 주차장만 표시 (줌 전략)
+const STATIC_MIN_ZOOM = 11;   // 이 줌 미만에서는 실시간 주차장만 표시 (줌 전략)
 const LIST_MAX = 80;
 
 // ═══ 상태 ═══
 let LOTS = [];
-let showNa = false, filter = "all", query = "";
+let liveOnly = false, filter = "all", query = ""; // 기본: 수도권 전체 표시 (실시간 없는 곳 포함)
 let selectedId = null, myPos = null;
 let meta = { source:"-", updated:null, counts:{} };
 let nextPollAt = 0, pollTimer = null;
@@ -198,7 +198,8 @@ let meMarker = null;
 
 // ═══ 지도 ═══
 const map = L.map("map", { zoomControl:false }).setView(DEFAULT_CENTER, 13);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom:19, attribution:"© OpenStreetMap © CARTO" }).addTo(map);
+// Voyager 타일: light_all보다 색감 풍부 (도로·공원·수역 컬러)
+L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom:19, attribution:"© OpenStreetMap © CARTO" }).addTo(map);
 L.control.zoom({ position:"bottomright" }).addTo(map);
 
 // 클러스터 (CDN 로드 실패 시 일반 레이어로 폴백)
@@ -249,7 +250,7 @@ const debounce = (fn, ms) => { let t; return (...a)=>{ clearTimeout(t); t=setTim
 // ═══ 필터 파이프라인 ═══
 function baseLots(){
   return LOTS.filter(l=>{
-    if(!showNa && !l.live) return false;
+    if(liveOnly && !l.live) return false;
     if(filter==="avail" && !(l.live && l.cur>0)) return false;
     if(filter==="resident" && !l.resident) return false;
     if(filter==="fav" && !favs.has(String(l.id))) return false;
@@ -333,7 +334,7 @@ function renderStatus(){
     ? "⏳ 실제 데이터 불러오는 중… (서울시 API 호출)"
     : `데이터: ${meta.source||"-"}<br>실시간 ${meta.counts?.live??0}곳 · 정적 ${meta.counts?.static??0}곳 · 갱신 ${meta.updated}` +
       (meta.datagoPending ? `<br>⏳ 전국표준데이터 수집 중… (자동 반영)` : ``) +
-      `<br>실시간 미제공 ${naCnt}곳 ${showNa?"표시":"숨김"} · 다음 갱신 ${mm}:${ss}`;
+      `<br>실시간 미제공 ${naCnt}곳 ${liveOnly?"숨김":"표시"} · 다음 갱신 ${mm}:${ss}`;
 }
 function render(){ renderMap(); renderList(); renderStatus(); }
 
@@ -342,17 +343,24 @@ function openMini(id){
   selectedId = id;
   const l = LOTS.find(x=>String(x.id)===String(id));
   if(!l) return;
-  $("mini").innerHTML = `<div style="position:relative">${cardHtml(l, true)}</div><button class="go" onclick="openDetail('${l.id}')">상세 정보 보기</button>`;
+  $("detail").classList.remove("open"); // 상세가 열려있으면 닫고 미니로 전환
+  $("mini").innerHTML = `
+    <button style="position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;background:#f3f4f6;border:none;color:#6b7280;font-size:13px;cursor:pointer;z-index:2" onclick="closeMini()">✕</button>
+    <div style="position:relative">${cardHtml(l, true)}</div>
+    <button class="go" onclick="openDetail('${l.id}')">상세 정보 보기</button>`;
   $("mini").classList.add("show");
-  $("sheet").classList.remove("open");
+  if(!isDesktop()) $("sheet").classList.remove("open");
   renderMap();
 }
-function closeMini(){ $("mini").classList.remove("show"); }
+function closeMini(){
+  $("mini").classList.remove("show");
+  if(!$("detail").classList.contains("open")){ selectedId = null; renderMap(); }
+}
 function openDetail(id){
-  selectedId = id;
   const l = LOTS.find(x=>String(x.id)===String(id));
   if(!l) return;
   closeMini();
+  selectedId = id; // closeMini 이후에 설정 (선택 해제 방지)
   const st = availState(l);
   const pct = (l.live && l.cur!==null && l.total) ? Math.round(l.cur/l.total*100) : 0;
   const liveBox = (l.live && l.cur!==null)
@@ -395,6 +403,7 @@ function openDetail(id){
 function closeDetail(){
   selectedId = null;
   $("detail").classList.remove("open");
+  closeMini();
   renderMap();
 }
 
@@ -496,14 +505,16 @@ document.querySelectorAll(".chip").forEach(c=>c.addEventListener("click", ()=>{
   filter = c.dataset.f;
   renderMap(); renderList();
 }));
-$("naToggle").addEventListener("click", function(){
-  showNa = !showNa;
-  this.classList.toggle("on", showNa);
+$("liveToggle").addEventListener("click", function(){
+  liveOnly = !liveOnly;
+  this.classList.toggle("on", liveOnly);
   render();
 });
 $("refreshBtn").addEventListener("click", ()=>loadData(true));
 $("locateBtn").addEventListener("click", requestGeo);
 map.on("click", ()=>{ closeDetail(); closeMini(); if(!isDesktop()) $("sheet").classList.remove("open"); });
+map.on("movestart", ()=>closeMini()); // 지도를 끌면 미니카드 닫기
+document.addEventListener("keydown", e=>{ if(e.key==="Escape"){ closeDetail(); closeMini(); } });
 if(isDesktop()) $("sheet").classList.add("open");
 map.on("moveend zoomend", debounce(()=>{ renderMap(); renderList(); }, 250));
 setInterval(renderStatus, 1000);
