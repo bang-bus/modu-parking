@@ -1,0 +1,7 @@
+# 인증키 — 절대 커밋 금지 (배포는 Vercel 환경변수 SEOUL_KEY 사용)
+config.json
+
+__pycache__/
+*.pyc
+.vercel
+.DS_Store

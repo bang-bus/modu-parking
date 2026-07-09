@@ -1,0 +1,12 @@
+{
+  "name": "모두의공영주차장",
+  "short_name": "공영주차장",
+  "description": "수도권 공영주차장 실시간 빈자리·요금·거주자우선 정보",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
